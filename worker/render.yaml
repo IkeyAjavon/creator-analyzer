@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: creator-analyzer-worker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WORKER_SECRET
+        sync: false
+    healthCheckPath: /health
