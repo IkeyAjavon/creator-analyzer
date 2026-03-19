@@ -3,7 +3,10 @@
 import json
 import re
 import subprocess
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def detect_platform(url: str) -> str:
@@ -20,16 +23,18 @@ def detect_platform(url: str) -> str:
 def get_video_metadata(url: str) -> dict:
     """Fetch video metadata without downloading."""
     try:
-        result = subprocess.run(
-            ["yt-dlp", "--dump-json", "--no-download", url],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+        args = [
+            "yt-dlp", "--dump-json", "--no-download",
+            "--no-check-certificates",
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            url,
+        ]
+        result = subprocess.run(args, capture_output=True, text=True, timeout=60)
         if result.returncode == 0:
             return json.loads(result.stdout)
-    except Exception:
-        pass
+        logger.error(f"Metadata fetch failed: {result.stderr[:500]}")
+    except Exception as e:
+        logger.error(f"Metadata exception: {e}")
     return {}
 
 
@@ -38,14 +43,28 @@ def download_video(url: str, output_dir: Path) -> Path | None:
     video_path = output_dir / "video.mp4"
 
     platform = detect_platform(url)
-    args = ["yt-dlp", "-f", "best[ext=mp4]/best", "-o", str(video_path), "--no-playlist"]
+    args = [
+        "yt-dlp",
+        "-f", "best[ext=mp4]/best",
+        "-o", str(video_path),
+        "--no-playlist",
+        "--no-check-certificates",
+        "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    ]
 
-    if platform == "tiktok":
-        args.extend(["--impersonate", "chrome"])
+    if platform == "youtube":
+        args.extend([
+            "--extractor-args", "youtube:player_client=web",
+        ])
 
     args.append(url)
 
-    subprocess.run(args, capture_output=True, text=True, timeout=120)
+    logger.info(f"Downloading: {url}")
+    result = subprocess.run(args, capture_output=True, text=True, timeout=120)
+
+    if result.returncode != 0:
+        logger.error(f"Download failed. stderr: {result.stderr[:1000]}")
+        logger.error(f"Download failed. stdout: {result.stdout[:500]}")
 
     if video_path.exists():
         return video_path
@@ -68,6 +87,7 @@ def get_youtube_captions(url: str, output_dir: Path) -> str | None:
                 "--sub-lang", "en",
                 "--skip-download",
                 "--sub-format", "srt",
+                "--no-check-certificates",
                 "-o", str(output_dir / "captions"),
                 url,
             ],

@@ -1,5 +1,6 @@
 """Creator Analyzer Worker — Flask API for video processing."""
 
+import logging
 import os
 import shutil
 import tempfile
@@ -8,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, jsonify, request
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 from config import WORKER_SECRET, DEFAULT_FRAMES
 from downloader import detect_platform, get_video_metadata, download_video, get_youtube_captions, safe_filename
@@ -220,5 +223,5 @@ def run_pipeline(job_id: str, url: str):
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
