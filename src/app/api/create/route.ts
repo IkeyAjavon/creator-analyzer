@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildCreationSystemPrompt } from "@/lib/claude/prompts";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const { prompt, style_filter, history } = await request.json();
@@ -77,16 +79,36 @@ export async function POST(request: Request) {
 
     const systemPrompt = buildCreationSystemPrompt(styleContext, "freeform");
 
-    const response = await client.messages.create({
+    // Use streaming for faster perceived response
+    const stream = await client.messages.stream({
       model: process.env.CLAUDE_MODEL || "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: systemPrompt,
       messages,
     });
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const event of stream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              controller.enqueue(encoder.encode(event.delta.text));
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      },
+    });
 
-    return NextResponse.json({ response: text });
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -1,26 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Job } from "@/types/database";
 
 export function useRealtimeJob(jobId: string | null) {
   const [job, setJob] = useState<Job | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId) {
+      setJob(null);
+      return;
+    }
 
     const supabase = createClient();
 
+    // Fetch job status
+    const fetchJob = async () => {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("id", jobId)
+        .single();
+      if (data) setJob(data as Job);
+    };
+
     // Initial fetch
-    supabase
-      .from("jobs")
-      .select("*")
-      .eq("id", jobId)
-      .single()
-      .then(({ data }) => {
-        if (data) setJob(data as Job);
-      });
+    fetchJob();
 
     // Realtime subscription
     const channel = supabase
@@ -39,10 +46,23 @@ export function useRealtimeJob(jobId: string | null) {
       )
       .subscribe();
 
+    // Polling fallback every 3 seconds in case realtime drops
+    intervalRef.current = setInterval(() => {
+      fetchJob();
+    }, 3000);
+
     return () => {
       supabase.removeChannel(channel);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [jobId]);
+
+  // Stop polling once job is complete or failed
+  useEffect(() => {
+    if (job && (job.status === "complete" || job.status === "failed")) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  }, [job?.status]);
 
   return job;
 }
