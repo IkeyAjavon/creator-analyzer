@@ -7,10 +7,10 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp
-RUN pip install --no-cache-dir yt-dlp
-
 WORKDIR /app
+
+# Upgrade pip and setuptools first
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Install Python dependencies
 COPY requirements.txt .
