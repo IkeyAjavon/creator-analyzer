@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 from config import WORKER_SECRET, DEFAULT_FRAMES
 from downloader import detect_platform, get_video_metadata, download_video, get_youtube_captions, safe_filename
+from transcriber import transcribe_video
 from frame_extractor import extract_frames
 from analyzer import analyze_video
 from storage import get_supabase, upload_frame, update_job_status
@@ -69,17 +70,21 @@ def run_pipeline(job_id: str, url: str):
 
         update_job_status(job_id, "downloading", 20, f"Downloaded: {meta.get('title', 'video')[:50]}")
 
-        # ── Step 2: Get captions if available ──────────────────────
-        update_job_status(job_id, "transcribing", 30, "Checking for captions...")
+        # ── Step 2: Transcribe ──────────────────────────────────────
+        update_job_status(job_id, "transcribing", 30, "Transcribing audio...")
 
         transcript = None
 
-        # Try YouTube captions (no Whisper needed)
+        # Try YouTube captions first (free, no API needed)
         if platform == "youtube":
             transcript = get_youtube_captions(url, work_dir)
 
+        # If no captions, use Groq Whisper to transcribe the audio
         if not transcript:
-            transcript = "[No transcript — Claude will analyze from frames]"
+            transcript = transcribe_video(video_path, work_dir)
+
+        if not transcript:
+            transcript = "[No transcript available — Claude will analyze from frames only]"
 
         word_count = len(transcript.split())
         update_job_status(job_id, "transcribing", 50, f"Transcript: {word_count} words")
