@@ -11,7 +11,6 @@ from flask import Flask, jsonify, request
 
 from config import WORKER_SECRET, DEFAULT_FRAMES
 from downloader import detect_platform, get_video_metadata, download_video, get_youtube_captions, safe_filename
-from transcriber import extract_audio, transcribe_audio
 from frame_extractor import extract_frames
 from analyzer import analyze_video
 from storage import get_supabase, upload_frame, update_job_status
@@ -67,22 +66,17 @@ def run_pipeline(job_id: str, url: str):
 
         update_job_status(job_id, "downloading", 20, f"Downloaded: {meta.get('title', 'video')[:50]}")
 
-        # ── Step 2: Transcribe ───────────────────────────────────
-        update_job_status(job_id, "transcribing", 30, "Transcribing audio...")
+        # ── Step 2: Get captions if available ──────────────────────
+        update_job_status(job_id, "transcribing", 30, "Checking for captions...")
 
         transcript = None
 
-        # Try YouTube captions first (faster, no Whisper needed)
+        # Try YouTube captions (no Whisper needed)
         if platform == "youtube":
             transcript = get_youtube_captions(url, work_dir)
 
         if not transcript:
-            audio_path = extract_audio(video_path, work_dir)
-            if audio_path:
-                transcript = transcribe_audio(audio_path, work_dir)
-
-        if not transcript:
-            transcript = "[No audio could be transcribed]"
+            transcript = "[No transcript — Claude will analyze from frames]"
 
         word_count = len(transcript.split())
         update_job_status(job_id, "transcribing", 50, f"Transcript: {word_count} words")
